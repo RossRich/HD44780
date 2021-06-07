@@ -98,12 +98,27 @@ uint8_t HD44780::hdWrite(uint8_t data[], uint16_t length, bool isEnd) {
     d[1] = data[ii++];
     d[2] = data[ii++];
     _pcf->send(d, 3, false);
-    delayMicroseconds(1);
+    // delayMicroseconds(1);
 
     d[0] = data[ii++];
     d[1] = data[ii++];
     d[2] = data[ii++];
     _pcf->send(d, 3);
+    // delayMicroseconds(50);
+    waitingHd();
+
+    /* _pcf->send(data[0]);
+    _pcf->send(data[1]);
+    delayMicroseconds(1);
+    _pcf->send(data[2]);
+    delayMicroseconds(50);
+
+    _pcf->send(data[3]);
+    _pcf->send(data[4]);
+    delayMicroseconds(1);
+    _pcf->send(data[5]);
+    delayMicroseconds(50); */
+
     waitingHd();
   }
 
@@ -296,18 +311,31 @@ void HD44780::setup() {
 
 #endif // _DEBUG_
 
-  delay(2000);
+  delay(50);
 
-  hdWrite(0x30, false);
+  // hdWrite(0x30);
+  hdWrite(0x30 | HD_E);
+  // delayMicroseconds(1);
+  hdWrite(0x30);
   delayMicroseconds(4100);
 
-  hdWrite(0x30, false);
+  // hdWrite(0x30);
+  hdWrite(0x30 | HD_E);
+  // delayMicroseconds(1);
+  hdWrite(0x30);
   delayMicroseconds(100);
 
-  hdWrite(0x30, false);
-  delayMicroseconds(100);
+  // hdWrite(0x30);
+  hdWrite(0x30 | HD_E);
+  // delayMicroseconds(1);
+  hdWrite(0x30);
+  // delayMicroseconds(150);
 
-  hdWrite(0x20, false);
+  // hdWrite(0x20);
+  hdWrite(0x20 | HD_E);
+  // delayMicroseconds(1);
+  hdWrite(0x20);
+  // delayMicroseconds(150);
   waitingHd();
 
   uint8_t boxs[HD_CMNDS_NUM];
@@ -315,11 +343,12 @@ void HD44780::setup() {
   doCommands(HD_SETTINGS | HD_S_BUS_INTERFACE_4 | HD_S_FONT_5X8 |
                  HD_S_NUM_LINES_2,
              boxs);
-  hdWrite(boxs, HD_CMNDS_NUM, false);
+  hdWrite(boxs, HD_CMNDS_NUM);
   waitingHd();
+  // delayMicroseconds(101);
 
   doCommands(HD_CONTROL | HD_C_CURSOR_ON | HD_C_DSPL_ON, boxs);
-  hdWrite(boxs, HD_CMNDS_NUM, false);
+  hdWrite(boxs, HD_CMNDS_NUM);
   waitingHd();
 
   doCommands(HD_ENTRY_MODE | HD_EM_INCREMENT_INDEX_CURSOR, boxs);
@@ -331,7 +360,7 @@ void HD44780::setup() {
   waitingHd();
 
   doCommands(HD_HOME, boxs);
-  hdWrite(boxs, HD_CMNDS_NUM);
+  hdWrite(boxs, HD_CMNDS_NUM, false);
   waitingHd();
 
 #if defined(_DEBUG_)
