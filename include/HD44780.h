@@ -77,8 +77,9 @@
 #define HD_CMNDS_NUM 6U // A one char converted in HD_CMNDS_NUM bytes
 
 #define HD_ERR_PCF 99
-#define HD_ERR_DO_CMNDS 98
-#define HD_ERR_FREEZ 97
+#define HD_Q_ERR 89
+#define HD_ERR_DO_CMNDS 79
+#define HD_ERR_FREEZ 78
 
 struct Box {
   uint8_t *data;
@@ -155,6 +156,8 @@ public:
    *
    * @param data 1 byte of a data
    * @param isEnd Free the i2c bus?
+   * 
+   * @return 0 if error, else 1
    **/
   uint8_t hdWrite(uint8_t data, bool isEnd = true);
 
@@ -164,15 +167,19 @@ public:
    * @param data[] array of data
    * @param length data length
    * @param isEnd Free the i2c bus? defaul true
+   * 
+   * @return 0 if error, else number of writed bytes
    **/
   uint8_t hdWrite(uint8_t data[], uint16_t length, bool isEnd = true);
 
   /**
-   * Write 1 byte (8 bits)
+   * Add Box into queue for write to HD
    *
    * @note A data shoud be packed into a Box struct
    *
    * @param *item data package for queue
+   * 
+   * @return 0 if error, else 1
    **/
   uint8_t hdWrite(Box *item);
 

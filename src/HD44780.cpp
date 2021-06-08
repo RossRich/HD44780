@@ -71,61 +71,56 @@ void HD44780::doCommands(uint8_t data, uint8_t boxArr[], uint8_t cmnd) {
 }
 
 uint8_t HD44780::hdWrite(Box *item) {
-  enqueue(item);
-
-  if (_pcf->isError())
-    return HD_ERR_PCF;
-
-  return 0;
+  if(enqueue(item)) {
+    return 1;
+  } else {
+    setError(HD_Q_ERR);
+    return 0;
+  }
 }
 
 uint8_t HD44780::hdWrite(uint8_t data, bool isEnd) {
 
   _pcf->send(data, isEnd);
 
-  if (_pcf->isError())
-    return HD_ERR_PCF;
+  if (_pcf->isError()) {
+    setError(HD_ERR_PCF);
+    return 0;
+  }
 
-  return 0;
+  return 1;
 }
 
 uint8_t HD44780::hdWrite(uint8_t data[], uint16_t length, bool isEnd) {
-
+  uint8_t n = 0;
   uint8_t ii = 0;
-  for (size_t i = 0; i < length / HD_CMNDS_NUM; i++) {
+  uint8_t dataLen = length / HD_CMNDS_NUM;
+
+  for (size_t i = 0; i < dataLen; i++) {
+    if (_pcf->isError())
+      break;
+
     uint8_t d[3];
     d[0] = data[ii++];
     d[1] = data[ii++];
     d[2] = data[ii++];
     _pcf->send(d, 3, false);
-    // delayMicroseconds(1);
 
     d[0] = data[ii++];
     d[1] = data[ii++];
     d[2] = data[ii++];
-    _pcf->send(d, 3);
-    // delayMicroseconds(50);
-    waitingHd();
-
-    /* _pcf->send(data[0]);
-    _pcf->send(data[1]);
-    delayMicroseconds(1);
-    _pcf->send(data[2]);
-    delayMicroseconds(50);
-
-    _pcf->send(data[3]);
-    _pcf->send(data[4]);
-    delayMicroseconds(1);
-    _pcf->send(data[5]);
-    delayMicroseconds(50); */
+    _pcf->send(d, 3, false);
 
     waitingHd();
+    n++;
   }
 
-  if (_pcf->isError())
-    return HD_ERR_PCF;
+  if (_pcf->isError()) {
+    setError(HD_ERR_PCF);
+    return 0;
+  }
 
-  return 0;
+  return n;
 }
 
 uint8_t HD44780::hdRead(int8_t *data, bool isEnd) {
@@ -152,7 +147,6 @@ HDState HD44780::hdState() {
   int8_t data = 0;
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, false);
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT | HD_E, false);
-  delayMicroseconds(1);
   hdRead(&data, false); // read error?
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, false);
 
@@ -162,7 +156,6 @@ HDState HD44780::hdState() {
   int8_t lowBits = 0;
   // hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, false);
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT | HD_E, false);
-  delayMicroseconds(1);
   hdRead(&lowBits, false); // error?
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, true);
 
@@ -199,7 +192,6 @@ bool HD44780::isBusy() {
   return st.isBusy;
 }
 
-
 void HD44780::waitingHd() {
 
   for (uint8_t i = 0; i < 100; i++) {
@@ -228,11 +220,6 @@ size_t HD44780::write(byte data) {
 }
 
 size_t HD44780::write(const uint8_t *data, size_t len) {
-  // uint16_t dataLength = len * HD_CMNDS_NUM;
-
-  // 2^3 = 8 => 8 * 4 = 32 = 1 the size of one box = TWI BUF SIZE
-  // uint8_t boxsNum = (dataLength / 48) + 1;
-
   uint16_t dataIndex = 0;
 
   Box *item;
@@ -313,29 +300,19 @@ void HD44780::setup() {
 
   delay(50);
 
-  // hdWrite(0x30);
   hdWrite(0x30 | HD_E);
-  // delayMicroseconds(1);
   hdWrite(0x30);
   delayMicroseconds(4100);
 
-  // hdWrite(0x30);
   hdWrite(0x30 | HD_E);
-  // delayMicroseconds(1);
   hdWrite(0x30);
   delayMicroseconds(100);
 
-  // hdWrite(0x30);
   hdWrite(0x30 | HD_E);
-  // delayMicroseconds(1);
   hdWrite(0x30);
-  // delayMicroseconds(150);
 
-  // hdWrite(0x20);
   hdWrite(0x20 | HD_E);
-  // delayMicroseconds(1);
   hdWrite(0x20);
-  // delayMicroseconds(150);
   waitingHd();
 
   uint8_t boxs[HD_CMNDS_NUM];
@@ -345,7 +322,6 @@ void HD44780::setup() {
              boxs);
   hdWrite(boxs, HD_CMNDS_NUM);
   waitingHd();
-  // delayMicroseconds(101);
 
   doCommands(HD_CONTROL | HD_C_CURSOR_ON | HD_C_DSPL_ON, boxs);
   hdWrite(boxs, HD_CMNDS_NUM);
