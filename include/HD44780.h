@@ -1,9 +1,15 @@
-/** TODO
- * without PCF module
- * size_t -> uint8_t fn: write, command
-
- * !!! PROJECT CRUSTAL !!!
-
+/**
+ * Author: Ross Rich
+ * Email:  RossRich@bk.ru
+ * 
+ * Project Crystal
+ * 
+ * Note
+ * in serial and calc
+ * [D7][D6][D5][D4][BL][E][RW][RS]
+ * 
+ * TODO
+ *  "Set blok" for F("asdasdasd")
  **/
 
 #if !defined(HD44780_H)
@@ -12,13 +18,6 @@
 #include <PCF8574T.h>
 #include <Print.h>
 #include <SQueue.h>
-
-/**
- * Note
- *
- * in serial and calc
- * [D7][D6][D5][D4][BL][E][RW][RS]
- **/
 
 /**
  * Registers
@@ -72,26 +71,31 @@
 #define HD_S_FONT_5X10 0x4U
 #define HD_S_FONT_5X8 0x0U
 
-// #define HD_LINE_LENGTH 40u // lenght of one line in two lines mode
-
-#define HD_CMNDS_NUM 6U // A one char converted in HD_CMNDS_NUM bytes
+#define HD_CMNDS_NUM 6U // One char converted in HD_CMNDS_NUM bytes
 
 #define HD_ERR_PCF 99
 #define HD_Q_ERR 89
 #define HD_ERR_DO_CMNDS 79
 #define HD_ERR_FREEZ 78
+#define HD_ERR_SETUP 77
 
+/**
+ * Struct for queue 
+ **/
 struct Box {
   uint8_t *data;
   uint16_t size;
 };
 
+/**
+ * Struct for store HD state
+ **/
 struct HDState {
   bool isBusy;
   uint8_t cursorPos;
 };
 
-void freeBox(Box *b);
+void freeBox(Box *b); // del box from memory
 inline uint8_t lowBits(uint8_t byte) { return byte & 0xF; }
 inline uint8_t highBits(uint8_t byte) { return byte & 0xF0; }
 
@@ -101,29 +105,65 @@ private:
   SQueue<Box> *_mQueue;
   uint8_t _chars;
   uint8_t _rows;
-  uint8_t backLight;
-  uint8_t _address;
   uint8_t cursorIndex;
   int8_t errorStatus;
 
-  void setup();
-  size_t write(byte) override;                               // from print
-  size_t write(const uint8_t *buffer, size_t size) override; // from print
+  HD44780() {}
 
   /**
-   * The fanction read a data throu PCF chip
-   * @param *data pointer an data
+   * Main setup HD
+   **/
+  void setup();
+
+  /**
+   * Prepares data for write into HD and add it to a queue
+   * @note Its override func from Print.h
+   * 
+   * @param byte 8 bit of data for write into HD
+   * @return 0 if error, else 1
+   **/
+  size_t write(byte) override;
+
+  /**
+   * Prepares array of data for write into HD and add it to a queue
+   * @note Its override func from Print.h
+   * 
+   * @param buffer array of data for write
+   * @param size buffer size
+   * 
+   * @return num of bytes written 
+   **/
+  size_t write(const uint8_t *buffer, size_t size) override;
+
+  /**
+   * The function read a data through PCR chip
+   * 
+   * @param *data pointer to data
    * @param isEnd is last a transaction?
+   * 
    * @return 1 if readed, 0 - if error
    **/
   uint8_t hdRead(int8_t *data, bool isEnd = true);
 
-  HDState hdState();
+  /**
+   * Read the internal status of HD 
+   * 
+   * @param *st HDState pointer 
+   **/
+  void hdState(HDState *st);
 
-  Box *getBox(uint16_t);
+  /**
+   * Prepare box for store converted data
+   * @see struct Box
+   * @note size = num chars * HD_CMNDS_NUM
+   * 
+   * @param size box size
+   * 
+   * @return pointer on struct 'Box'  
+   **/
+  Box *getBox(uint16_t size);
 
 public:
-  HD44780() {}
   ~HD44780() {}
 
   /**
@@ -136,7 +176,7 @@ public:
   explicit HD44780(PCF8574T *, byte = 16, byte = 2);
 
   /**
-   * Checks the status of the internal state
+   * Checks a status of internal state
    *
    * @note Non blocking operation
    * 
@@ -166,11 +206,10 @@ public:
    *
    * @param data[] array of data
    * @param length data length
-   * @param isEnd Free the i2c bus? defaul true
    * 
    * @return 0 if error, else number of writed bytes
    **/
-  uint8_t hdWrite(uint8_t data[], uint16_t length, bool isEnd = true);
+  uint8_t hdWrite(uint8_t data[], uint16_t length);
 
   /**
    * Add Box into queue for write to HD
@@ -189,8 +228,8 @@ public:
    * @note 1 byte (uint8_t) = HD_CMNDS_NUM bytes
    *
    * @param data payload for write in HD
-   * @param boxArr pointer on array for converted bytes. Array mast have to
-   *contain HD_CMNDS_NUM length
+   * @param boxArr pointer on array for converted bytes. 
+   *        Array mast have to contain HD_CMNDS_NUM length
    * @param cmnd HD register. Default = HD_WRITE_COMMAND
    **/
   void doCommands(uint8_t data, uint8_t boxArr[],
@@ -198,7 +237,7 @@ public:
 
   bool enqueue(Box *);
   void checkQueue();
-  uint16_t queueSize();
+  inline uint16_t queueSize() { return _mQueue->size(); }
   void clean();
   void printBeginPosition(uint8_t, const char[], uint8_t); // printAt()
   void setCursor(uint8_t col, uint8_t row);

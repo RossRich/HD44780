@@ -20,8 +20,14 @@ HD44780::HD44780(PCF8574T *pcfInstance, byte chars, byte rows) {
     _pcf = pcfInstance;
     setup();
   } else {
-    setError(11);
+    setError(HD_ERR_SETUP);
+
+#if defined(_DEBUG_)
+
     Serial.println(F("HD44780 constructor error"));
+
+#endif // _DEBUG_
+
   }
 }
 
@@ -71,7 +77,7 @@ void HD44780::doCommands(uint8_t data, uint8_t boxArr[], uint8_t cmnd) {
 }
 
 uint8_t HD44780::hdWrite(Box *item) {
-  if(enqueue(item)) {
+  if (enqueue(item)) {
     return 1;
   } else {
     setError(HD_Q_ERR);
@@ -91,7 +97,7 @@ uint8_t HD44780::hdWrite(uint8_t data, bool isEnd) {
   return 1;
 }
 
-uint8_t HD44780::hdWrite(uint8_t data[], uint16_t length, bool isEnd) {
+uint8_t HD44780::hdWrite(uint8_t data[], uint16_t length) {
   uint8_t n = 0;
   uint8_t ii = 0;
   uint8_t dataLen = length / HD_CMNDS_NUM;
@@ -142,21 +148,20 @@ uint8_t HD44780::hdRead(int8_t *data, bool isEnd) {
   }
 }
 
-HDState HD44780::hdState() {
+void HD44780::hdState(HDState *st) {
   // Reading high bytes
   int8_t data = 0;
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, false);
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT | HD_E, false);
-  hdRead(&data, false); // read error?
+  hdRead(&data, false);
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, false);
 
   data = highBits((uint8_t)data);
 
   // Reading low bytes
   int8_t lowBits = 0;
-  // hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, false);
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT | HD_E, false);
-  hdRead(&lowBits, false); // error?
+  hdRead(&lowBits, false);
   hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, true);
 
   data |= highBits((uint8_t)lowBits) >> 4;
@@ -164,6 +169,13 @@ HDState HD44780::hdState() {
   bool busyFlag = bool(bitRead(data, 7));
 
   cursorIndex = (uint8_t)bitWrite(data, 7, 0);
+
+  st->cursorPos = cursorIndex;
+
+  if (isError())
+    st->isBusy = 0;
+  else
+    st->isBusy = busyFlag;
 
 #if defined(_DEBUG_)
 
@@ -175,8 +187,6 @@ HDState HD44780::hdState() {
   Serial.println(busyFlag);
 
 #endif // _DEBUG_
-
-  return {busyFlag, cursorIndex};
 }
 
 bool HD44780::isBusy() {
@@ -187,7 +197,8 @@ bool HD44780::isBusy() {
 
 #endif // _DEBUG_
 
-  HDState st = hdState();
+  HDState st;
+  hdState(&st);
 
   return st.isBusy;
 }
@@ -215,14 +226,18 @@ void HD44780::waitingHd() {
 size_t HD44780::write(byte data) {
   Box *box = getBox(HD_CMNDS_NUM);
   doCommands(data, box->data, HD_WRITE_DATA);
-  hdWrite(box);
+
+  if (!hdWrite(box)) {
+    freeBox(box);
+    return 0;
+  }
+
   return 1;
 }
 
 size_t HD44780::write(const uint8_t *data, size_t len) {
-  uint16_t dataIndex = 0;
-
   Box *item;
+  uint16_t dataIndex = 0;
   uint8_t bufferIndex = 0;
   uint8_t boxIndex = 0;
   uint8_t boxSize = 0;
@@ -249,7 +264,7 @@ size_t HD44780::write(const uint8_t *data, size_t len) {
     }
 
     uint8_t boxs[HD_CMNDS_NUM];
-    doCommands(data[i], boxs, HD_WRITE_DATA); // !pass the *item to func
+    doCommands(data[i], boxs, HD_WRITE_DATA);
 
     item->data[bufferIndex++] = boxs[0];
     item->data[bufferIndex++] = boxs[1];
@@ -262,7 +277,11 @@ size_t HD44780::write(const uint8_t *data, size_t len) {
 
     if (bufferIndex == boxSize) {
       bufferIndex = 0;
-      hdWrite(item);
+
+      if (!hdWrite(item)) {
+        freeBox(item);
+        break;
+      }
     }
   }
 
@@ -288,7 +307,7 @@ size_t HD44780::write(const uint8_t *data, size_t len) {
 
 #endif // _DEBUG_
 
-  return 1;
+  return dataIndex;
 }
 
 void HD44780::setup() {
@@ -300,19 +319,19 @@ void HD44780::setup() {
 
   delay(50);
 
-  hdWrite(0x30 | HD_E);
+  hdWrite(0x30 | HD_E, false);
   hdWrite(0x30);
   delayMicroseconds(4100);
 
-  hdWrite(0x30 | HD_E);
+  hdWrite(0x30 | HD_E, false);
   hdWrite(0x30);
   delayMicroseconds(100);
 
-  hdWrite(0x30 | HD_E);
+  hdWrite(0x30 | HD_E, false);
   hdWrite(0x30);
 
-  hdWrite(0x20 | HD_E);
-  hdWrite(0x20);
+  hdWrite(0x20 | HD_E, false);
+  hdWrite(0x20, false);
   waitingHd();
 
   uint8_t boxs[HD_CMNDS_NUM];
@@ -328,15 +347,15 @@ void HD44780::setup() {
   waitingHd();
 
   doCommands(HD_ENTRY_MODE | HD_EM_INCREMENT_INDEX_CURSOR, boxs);
-  hdWrite(boxs, HD_CMNDS_NUM, false);
+  hdWrite(boxs, HD_CMNDS_NUM);
   waitingHd();
 
   doCommands(HD_CLEAR, boxs);
-  hdWrite(boxs, HD_CMNDS_NUM, false);
+  hdWrite(boxs, HD_CMNDS_NUM);
   waitingHd();
 
   doCommands(HD_HOME, boxs);
-  hdWrite(boxs, HD_CMNDS_NUM, false);
+  hdWrite(boxs, HD_CMNDS_NUM);
   waitingHd();
 
 #if defined(_DEBUG_)
@@ -391,14 +410,13 @@ bool HD44780::enqueue(Box *item) {
   return true;
 }
 
-uint16_t HD44780::queueSize() { return _mQueue->size(); }
-
 void HD44780::clean() {
   while (!_mQueue->isEmpty())
     freeBox(_mQueue->dequeue());
   _mQueue->clean();
 }
 
+//todo error handler
 void HD44780::checkQueue() {
   if (!_mQueue->isEmpty()) {
     Box *data = _mQueue->dequeue();
