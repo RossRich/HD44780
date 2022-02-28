@@ -1,13 +1,13 @@
 /**
  * Author: Ross Rich
  * Email:  RossRich@bk.ru
- * 
+ *
  * Project Crystal
- * 
+ *
  * Note
  * in serial and calc
  * [D7][D6][D5][D4][BL][E][RW][RS]
- * 
+ *
  * TODO
  *  "Set blok" for F("asdasdasd")
  **/
@@ -38,7 +38,7 @@
 #define HD_SHIFT_LEFT 0x18U
 #define HD_MOVE_CURSOR_RIGHT 0x14U
 #define HD_MOVE_CURSOR_LEFT 0x10U
-#define HD_WRITE_TO_POSITION 0x80U
+#define HD_SET_CUR_INDEX 0x80U
 
 /**
  * Entry mode set
@@ -80,7 +80,7 @@
 #define HD_ERR_SETUP 77
 
 /**
- * Struct for queue 
+ * Struct for queue
  **/
 struct Box {
   uint8_t *data;
@@ -118,7 +118,7 @@ private:
   /**
    * Prepares data for write into HD and add it to a queue
    * @note Its override func from Print.h
-   * 
+   *
    * @param byte 8 bit of data for write into HD
    * @return 0 if error, else 1
    **/
@@ -127,28 +127,28 @@ private:
   /**
    * Prepares array of data for write into HD and add it to a queue
    * @note Its override func from Print.h
-   * 
+   *
    * @param buffer array of data for write
    * @param size buffer size
-   * 
-   * @return num of bytes written 
+   *
+   * @return num of bytes written
    **/
   size_t write(const uint8_t *buffer, size_t size) override;
 
   /**
    * The function read a data through PCR chip
-   * 
+   *
    * @param *data pointer to data
    * @param isEnd is last a transaction?
-   * 
+   *
    * @return 1 if readed, 0 - if error
    **/
   uint8_t hdRead(int8_t *data, bool isEnd = true);
 
   /**
-   * Read the internal status of HD 
-   * 
-   * @param *st HDState pointer 
+   * Read the internal status of HD
+   *
+   * @param *st HDState pointer
    **/
   void hdState(HDState *st);
 
@@ -156,10 +156,10 @@ private:
    * Prepare box for store converted data
    * @see struct Box
    * @note size = num chars * HD_CMNDS_NUM
-   * 
+   *
    * @param size box size
-   * 
-   * @return pointer on struct 'Box'  
+   *
+   * @return pointer on struct 'Box'
    **/
   Box *getBox(uint16_t size);
 
@@ -168,8 +168,8 @@ public:
 
   /**
    * Begin with PCF8574T
-   * 
-   * @param pcfInstance  
+   *
+   * @param pcfInstance
    * @param chars
    * @param rows
    **/
@@ -179,7 +179,7 @@ public:
    * Checks a status of internal state
    *
    * @note Non blocking operation
-   * 
+   *
    * @return busy state
    **/
   bool isBusy();
@@ -196,7 +196,7 @@ public:
    *
    * @param data 1 byte of a data
    * @param isEnd Free the i2c bus?
-   * 
+   *
    * @return 0 if error, else 1
    **/
   uint8_t hdWrite(uint8_t data, bool isEnd = true);
@@ -206,7 +206,7 @@ public:
    *
    * @param data[] array of data
    * @param length data length
-   * 
+   *
    * @return 0 if error, else number of writed bytes
    **/
   uint8_t hdWrite(uint8_t data[], uint16_t length);
@@ -217,7 +217,7 @@ public:
    * @note A data shoud be packed into a Box struct
    *
    * @param *item data package for queue
-   * 
+   *
    * @return 0 if error, else 1
    **/
   uint8_t hdWrite(Box *item);
@@ -228,7 +228,7 @@ public:
    * @note 1 byte (uint8_t) = HD_CMNDS_NUM bytes
    *
    * @param data payload for write in HD
-   * @param boxArr pointer on array for converted bytes. 
+   * @param boxArr pointer on array for converted bytes.
    *        Array mast have to contain HD_CMNDS_NUM length
    * @param cmnd HD register. Default = HD_WRITE_COMMAND
    **/
@@ -238,11 +238,11 @@ public:
   bool enqueue(Box *);
   void checkQueue();
   inline uint16_t queueSize() { return _mQueue->size(); }
-  void clean();
+  void qClean();
   void printBeginPosition(uint8_t, const char[], uint8_t); // printAt()
   void setCursor(uint8_t col, uint8_t row);
 
-  inline void clear(bool isEnd = true){};
+  void clear(bool isEnd = true);
 
   inline void on(bool isEnd = true) {}
 
@@ -269,9 +269,10 @@ public:
   inline uint8_t getCursorIndex() { return cursorIndex; };
   inline uint8_t isError() { return errorStatus; }
   inline void setError(int8_t err) {
-    errorStatus == 0 ? errorStatus = err : errorStatus = err;
+    if (errorStatus == 0)
+      errorStatus = err;
   };
-  // inline void clearError() { this->errorStatus = 0; };
+  inline void clearError() { errorStatus = 0; };
 };
 
 #endif // HD44780_H

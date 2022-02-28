@@ -29,6 +29,16 @@
             "projectEnvName": "nanoatmega328new",
             "toolchainBinDir": "C:/Users/Asus/.platformio/packages/toolchain-atmelavr/bin",
             "internalConsoleOptions": "openOnSessionStart"
+        },
+        {
+            "type": "platformio-debug",
+            "request": "launch",
+            "name": "PIO Debug (without uploading)",
+            "executable": "d:/Asus/Documents/Arduino/libraries/HD44780/.pio/build/nanoatmega328new/firmware.elf",
+            "projectEnvName": "nanoatmega328new",
+            "toolchainBinDir": "C:/Users/Asus/.platformio/packages/toolchain-atmelavr/bin",
+            "internalConsoleOptions": "openOnSessionStart",
+            "loadMode": "manual"
         }
     ]
 }
