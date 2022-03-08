@@ -12,7 +12,7 @@ HD44780::HD44780(PCF8574T *pcfInstance, byte chars, byte rows) {
   _rows = rows;
   _chars = chars;
 
-  errorStatus = 0;
+  _errorStatus = 0;
 
   _mQueue = new SQueue<Box>(Q_SIZE);
 
@@ -32,12 +32,12 @@ HD44780::HD44780(PCF8574T *pcfInstance, byte chars, byte rows) {
 
 void HD44780::doCommands(uint8_t data, uint8_t boxArr[], uint8_t cmnd) {
 
-  boxArr[0] = highBits(data) | HD_BACK_LIGHT | cmnd;
-  boxArr[1] = highBits(data) | HD_E | HD_BACK_LIGHT | cmnd;
-  boxArr[2] = highBits(data) | HD_BACK_LIGHT | cmnd;
-  boxArr[3] = (lowBits(data) << 4) | HD_BACK_LIGHT | cmnd;
-  boxArr[4] = (lowBits(data) << 4) | HD_E | HD_BACK_LIGHT | cmnd;
-  boxArr[5] = (lowBits(data) << 4) | HD_BACK_LIGHT | cmnd;
+  boxArr[0] = highBits(data) | _HD_BACKLIGHT | cmnd;
+  boxArr[1] = highBits(data) | HD_E | _HD_BACKLIGHT | cmnd;
+  boxArr[2] = highBits(data) | _HD_BACKLIGHT | cmnd;
+  boxArr[3] = (lowBits(data) << 4) | _HD_BACKLIGHT | cmnd;
+  boxArr[4] = (lowBits(data) << 4) | HD_E | _HD_BACKLIGHT | cmnd;
+  boxArr[5] = (lowBits(data) << 4) | _HD_BACKLIGHT | cmnd;
 
 #if defined(_HD_DEBUG_)
 
@@ -151,26 +151,26 @@ uint8_t HD44780::hdRead(int8_t *data, bool isEnd) {
 void HD44780::hdState(HDState *st) {
   // Reading high bytes
   int8_t data = 0;
-  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, false);
-  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT | HD_E, false);
+  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | _HD_BACKLIGHT, false);
+  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | _HD_BACKLIGHT | HD_E, false);
   hdRead(&data, false);
-  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, false);
+  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | _HD_BACKLIGHT, false);
 
   data = highBits((uint8_t)data);
 
   // Reading low bytes
   int8_t lowBits = 0;
-  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT | HD_E, false);
+  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | _HD_BACKLIGHT | HD_E, false);
   hdRead(&lowBits, false);
-  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | HD_BACK_LIGHT, true);
+  hdWrite(PCF_BEFORE_RECEIVE | HD_READ_STATUS | _HD_BACKLIGHT, true);
 
   data |= highBits((uint8_t)lowBits) >> 4;
 
   bool busyFlag = bool(bitRead(data, 7));
 
-  cursorIndex = (uint8_t)bitWrite(data, 7, 0);
+  _cursorIndex = (uint8_t)bitWrite(data, 7, 0);
 
-  st->cursorPos = cursorIndex;
+  st->cursorPos = _cursorIndex;
 
   if (isError())
     st->isBusy = 0;
@@ -182,7 +182,7 @@ void HD44780::hdState(HDState *st) {
   Serial.println(F("== HD status =="));
   Serial.println((uint8_t)data, BIN);
   Serial.print(F("CurInx: "));
-  Serial.println(cursorIndex);
+  Serial.println(_cursorIndex);
   Serial.print(F("IsBusy: "));
   Serial.println(busyFlag);
 
@@ -340,7 +340,7 @@ void HD44780::setup() {
   hdWrite(boxs, HD_CMNDS_NUM);
   waitingHd();
 
-  doCommands(HD_CONTROL | HD_C_CURSOR_ON | HD_C_DSPL_ON, boxs);
+  doCommands(_HD_CONTROL, boxs);
   hdWrite(boxs, HD_CMNDS_NUM);
   waitingHd();
 
@@ -366,16 +366,9 @@ void HD44780::setup() {
 #endif // _HD_DEBUG_
 }
 
-void HD44780::printBeginPosition(uint8_t position, const char cst[],
-                                 uint8_t len) {
-  // WRITE_TO_POSOTION(position, false);
-  // isBusy();
-
-  /* for (uint8_t i = 0; i < len; i++)
-    command(HD_WRITE_DATA, cst[i]);
-  setError(_pcf->commit()); */
-
-  // command(HD_WRITE_DATA, (uint8_t *)cst, len);
+void HD44780::printAt(uint8_t col, uint8_t row, const char cst[]) {
+  setCursor(col, row);
+  print(cst);
 }
 
 void HD44780::setCursor(uint8_t col, uint8_t row) {
@@ -396,6 +389,60 @@ void HD44780::clear(bool isEnd) {
   doCommands(HD_CLEAR, box->data);
   hdWrite(box);
 };
+
+void HD44780::home(bool isEnd) {
+  Box *box = getBox(HD_CMNDS_NUM);
+  doCommands(HD_HOME, box->data);
+  hdWrite(box);
+}
+
+void HD44780::moveCursorRight(bool isEnd){
+  Box *box = getBox(HD_CMNDS_NUM);
+  doCommands(HD_MOVE_CURSOR_RIGHT, box->data);
+  hdWrite(box);
+}
+
+void HD44780::moveCursorLeft(bool isEnd){
+  Box *box = getBox(HD_CMNDS_NUM);
+  doCommands(HD_MOVE_CURSOR_LEFT, box->data);
+  hdWrite(box);
+}
+
+void HD44780::moveDisplayRight(bool isEnd) {
+  Box *box = getBox(HD_CMNDS_NUM);
+  doCommands(HD_SHIFT_DSP_RIGHT, box->data);
+  hdWrite(box);
+}
+
+void HD44780::moveDisplayLeft(bool isEnd) {
+  Box *box = getBox(HD_CMNDS_NUM);
+  doCommands(HD_SHIFT_DSP_LEFT, box->data);
+  hdWrite(box);
+}
+
+void HD44780::on(bool isEnd) {
+
+  if(bitRead(_HD_CONTROL, 2))
+    return;
+
+  backlight(true);
+  Box *box = getBox(HD_CMNDS_NUM);
+  bitSet(_HD_CONTROL, 2);
+  doCommands(_HD_CONTROL, box->data);
+  hdWrite(box);
+}
+
+void HD44780::off(bool isEnd) {
+
+  if(!bitRead(_HD_CONTROL, 2))
+    return;
+
+  backlight(false);
+  Box *box = getBox(HD_CMNDS_NUM);
+  bitClear(_HD_CONTROL, 2);
+  doCommands(_HD_CONTROL, box->data);
+  hdWrite(box);
+}
 
 Box *HD44780::getBox(uint16_t size) {
   Box *newBox = new Box;
