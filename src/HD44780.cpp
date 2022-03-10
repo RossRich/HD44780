@@ -32,6 +32,13 @@ HD44780::HD44780(PCF8574T *pcfInstance, byte chars, byte rows) {
 
 void HD44780::doCommands(uint8_t data, uint8_t boxArr[], uint8_t cmnd) {
 
+#if HD_SMART_MODE == true
+
+  boxArr[0] = highBits(data) | _HD_BACKLIGHT | cmnd;
+  boxArr[1] = (lowBits(data) << 4) | _HD_BACKLIGHT | cmnd;
+
+#elif HD_SMART_MODE == false
+
   boxArr[0] = highBits(data) | _HD_BACKLIGHT | cmnd;
   boxArr[1] = highBits(data) | HD_E | _HD_BACKLIGHT | cmnd;
   boxArr[2] = highBits(data) | _HD_BACKLIGHT | cmnd;
@@ -73,6 +80,8 @@ void HD44780::doCommands(uint8_t data, uint8_t boxArr[], uint8_t cmnd) {
   Serial.println(boxArr[5], BIN);
 
 #endif // _HD_DEBUG_
+
+#endif // HD_SMART_MODE
 }
 
 uint8_t HD44780::hdWrite(Box *item) {
@@ -97,25 +106,41 @@ uint8_t HD44780::hdWrite(uint8_t data, bool isEnd) {
   return 1;
 }
 
-uint8_t HD44780::hdWrite(uint8_t data[], uint16_t length) {
+uint8_t HD44780::hdWrite(uint8_t data[], uint16_t length, uint8_t type) {
   uint8_t n = 0;
-  uint8_t ii = 0;
-  uint8_t dataLen = length / HD_CMNDS_NUM;
-
-  for (size_t i = 0; i < dataLen; i++) {
+  uint8_t item[HD_CMNDS_NUM];
+  uint8_t section[3];
+  for (uint16_t i = 0; i < length; i++) {
     if (_pcf->isError())
       break;
 
-    uint8_t d[3];
-    d[0] = data[ii++];
-    d[1] = data[ii++];
-    d[2] = data[ii++];
-    _pcf->send(d, 3, false);
+    doCommands(data[i], item, type);
 
-    d[0] = data[ii++];
-    d[1] = data[ii++];
-    d[2] = data[ii++];
-    _pcf->send(d, 3, false);
+#if HD_SMART_MODE == true
+
+    section[0] = item[0];
+    section[1] = item[0] | HD_E;
+    section[2] = item[0];
+    _pcf->send(section, 3, false);
+
+    section[0] = item[1];
+    section[1] = item[1] | HD_E;
+    section[2] = item[1];
+    _pcf->send(section, 3, false);
+
+#elif HD_SMART_MODE == false
+
+    section[0] = item[0];
+    section[1] = item[1];
+    section[2] = item[2];
+    _pcf->send(section, 3, false);
+
+    section[0] = item[3];
+    section[1] = item[4];
+    section[2] = item[5];
+    _pcf->send(section, 3, false);
+
+#endif // HD_SMART_MODE
 
     waitingHd();
     n++;
@@ -224,8 +249,8 @@ void HD44780::waitingHd() {
 }
 
 size_t HD44780::write(byte data) {
-  Box *box = getBox(HD_CMNDS_NUM);
-  doCommands(data, box->data, HD_WRITE_DATA);
+  Box *box = getDataBox();
+  box->data[0] = data;
 
   if (!hdWrite(box))
     return 0;
@@ -234,78 +259,17 @@ size_t HD44780::write(byte data) {
 }
 
 size_t HD44780::write(const uint8_t *data, size_t len) {
-  Box *item;
-  uint16_t dataIndex = 0;
-  uint8_t bufferIndex = 0;
-  uint8_t boxIndex = 0;
-  uint8_t boxSize = 0;
+  if (len == 0 || data == nullptr)
+    return 0;
 
-  for (uint8_t i = 0; i < len; i++) {
+  Box *box = getDataBox(len);
+  for (size_t i = 0; i < len; i++)
+    box->data[i] = data[i];
 
-    if (bufferIndex == 0) {
+  if (!hdWrite(box))
+    return 0;
 
-      if (len - dataIndex >= 5) { // 5 (5*6 = 30) - a one box of size 32 bit
-        boxSize = 30;
-      } else {
-        boxSize = (len - dataIndex) * HD_CMNDS_NUM;
-      }
-
-#if defined(_HD_DEBUG_)
-
-      Serial.print(F("#Box size: "));
-      Serial.println(boxSize);
-
-#endif // _HD_DEBUG_
-
-      item = getBox(boxSize);
-      boxIndex++;
-    }
-
-    uint8_t boxs[HD_CMNDS_NUM];
-    doCommands(data[i], boxs, HD_WRITE_DATA);
-
-    item->data[bufferIndex++] = boxs[0];
-    item->data[bufferIndex++] = boxs[1];
-    item->data[bufferIndex++] = boxs[2];
-    item->data[bufferIndex++] = boxs[3];
-    item->data[bufferIndex++] = boxs[4];
-    item->data[bufferIndex++] = boxs[5];
-
-    dataIndex++;
-
-    if (bufferIndex == boxSize) {
-      bufferIndex = 0;
-
-      if (!hdWrite(item)) {
-        // freeBox(item);
-        break;
-      }
-    }
-  }
-
-#if defined(_HD_DEBUG_)
-
-  uint16_t dataLength = len * HD_CMNDS_NUM;
-
-  // the max bits in a one box = 5 * 6 = 30
-  uint8_t boxsNum = (dataLength / 30) + 1;
-
-  Serial.println(F("=== command array ===="));
-  Serial.print(F("Data len "));
-  Serial.println(len);
-  Serial.print(F("Total bytes "));
-  Serial.println(dataLength);
-  Serial.print(F("Done cmnd: "));
-  Serial.println(dataIndex);
-  Serial.print(F("Total boxs : "));
-  Serial.println(boxsNum);
-  Serial.print(F("Maked boxs: "));
-  Serial.println(boxIndex);
-  Serial.println(F("***"));
-
-#endif // _HD_DEBUG_
-
-  return dataIndex;
+  return len;
 }
 
 void HD44780::setup() {
@@ -332,28 +296,26 @@ void HD44780::setup() {
   hdWrite(0x20, false);
   waitingHd();
 
-  uint8_t boxs[HD_CMNDS_NUM];
+  uint8_t box[] = {0};
 
-  doCommands(HD_SETTINGS | HD_S_BUS_INTERFACE_4 | HD_S_FONT_5X8 |
-                 HD_S_NUM_LINES_2,
-             boxs);
-  hdWrite(boxs, HD_CMNDS_NUM);
+  box[0] = HD_SETTINGS | HD_S_BUS_INTERFACE_4 | HD_S_FONT_5X8 | HD_S_NUM_LINES_2;
+  hdWrite(box, 1, HD_WRITE_COMMAND);
   waitingHd();
 
-  doCommands(_HD_CONTROL, boxs);
-  hdWrite(boxs, HD_CMNDS_NUM);
+  box[0] = _HD_CONTROL;
+  hdWrite(box, 1, HD_WRITE_COMMAND);
   waitingHd();
 
-  doCommands(HD_ENTRY_MODE | HD_EM_INCREMENT_INDEX_CURSOR, boxs);
-  hdWrite(boxs, HD_CMNDS_NUM);
+  box[0] = HD_ENTRY_MODE | HD_EM_INCREMENT_INDEX_CURSOR;
+  hdWrite(box, 1, HD_WRITE_COMMAND);
   waitingHd();
 
-  doCommands(HD_CLEAR, boxs);
-  hdWrite(boxs, HD_CMNDS_NUM);
+  box[0] = HD_CLEAR;
+  hdWrite(box, 1, HD_WRITE_COMMAND);
   waitingHd();
 
-  doCommands(HD_HOME, boxs);
-  hdWrite(boxs, HD_CMNDS_NUM);
+  box[0] = HD_HOME;
+  hdWrite(box, 1, HD_WRITE_COMMAND);
   waitingHd();
 
 #if defined(_HD_DEBUG_)
@@ -374,73 +336,74 @@ void HD44780::printAt(uint8_t col, uint8_t row, const char cst[]) {
 void HD44780::setCursor(uint8_t col, uint8_t row) {
   // row_offsets[] = { 0x00, 0x40, 0x14, 0x54 };
 
-  Box *b = getBox(HD_CMNDS_NUM);
   uint8_t curPos = col | HD_SET_CUR_INDEX;
 
-  if (row >= 2)
+  if (row >= 1)
     curPos = (col + 0x40) | HD_SET_CUR_INDEX;
 
-  doCommands(curPos, b->data);
+  Box *b = getCommandBox();
+  b->data[0] = curPos;
+
   hdWrite(b);
 }
 
-void HD44780::clear(bool isEnd) {
-  Box *box = getBox(HD_CMNDS_NUM);
-  doCommands(HD_CLEAR, box->data);
+void HD44780::clear() {
+  Box *box = getCommandBox();
+  box->data[0] = HD_CLEAR;
   hdWrite(box);
 };
 
-void HD44780::home(bool isEnd) {
-  Box *box = getBox(HD_CMNDS_NUM);
-  doCommands(HD_HOME, box->data);
+void HD44780::home() {
+  Box *box = getCommandBox();
+  box->data[0] = HD_HOME;
   hdWrite(box);
 }
 
-void HD44780::moveCursorRight(bool isEnd){
-  Box *box = getBox(HD_CMNDS_NUM);
-  doCommands(HD_MOVE_CURSOR_RIGHT, box->data);
+void HD44780::moveCursorRight() {
+  Box *box = getCommandBox();
+  box->data[0] = HD_MOVE_CURSOR_RIGHT;
   hdWrite(box);
 }
 
-void HD44780::moveCursorLeft(bool isEnd){
-  Box *box = getBox(HD_CMNDS_NUM);
-  doCommands(HD_MOVE_CURSOR_LEFT, box->data);
+void HD44780::moveCursorLeft() {
+  Box *box = getCommandBox();
+  box->data[0] = HD_MOVE_CURSOR_LEFT;
   hdWrite(box);
 }
 
-void HD44780::moveDisplayRight(bool isEnd) {
-  Box *box = getBox(HD_CMNDS_NUM);
-  doCommands(HD_SHIFT_DSP_RIGHT, box->data);
+void HD44780::moveDisplayRight() {
+  Box *box = getCommandBox();
+  box->data[0] = HD_SHIFT_DSP_RIGHT;
   hdWrite(box);
 }
 
-void HD44780::moveDisplayLeft(bool isEnd) {
-  Box *box = getBox(HD_CMNDS_NUM);
-  doCommands(HD_SHIFT_DSP_LEFT, box->data);
+void HD44780::moveDisplayLeft() {
+  Box *box = getCommandBox();
+  box->data[0] = HD_SHIFT_DSP_LEFT;
   hdWrite(box);
 }
 
-void HD44780::on(bool isEnd) {
+void HD44780::on() {
 
-  if(bitRead(_HD_CONTROL, 2))
+  if (bitRead(_HD_CONTROL, 2))
     return;
 
   backlight(true);
-  Box *box = getBox(HD_CMNDS_NUM);
+  Box *box = getCommandBox();
   bitSet(_HD_CONTROL, 2);
-  doCommands(_HD_CONTROL, box->data);
+  box->data[0] = _HD_CONTROL;
   hdWrite(box);
 }
 
-void HD44780::off(bool isEnd) {
+void HD44780::off() {
 
-  if(!bitRead(_HD_CONTROL, 2))
+  if (!bitRead(_HD_CONTROL, 2))
     return;
 
   backlight(false);
-  Box *box = getBox(HD_CMNDS_NUM);
+  Box *box = getCommandBox();
   bitClear(_HD_CONTROL, 2);
-  doCommands(_HD_CONTROL, box->data);
+  box->data[0] = _HD_CONTROL;
   hdWrite(box);
 }
 
@@ -448,6 +411,13 @@ Box *HD44780::getBox(uint16_t size) {
   Box *newBox = new Box;
   newBox->data = new uint8_t[size];
   newBox->size = size;
+
+  return newBox;
+}
+
+Box *HD44780::getBox(uint16_t size, Box::TYPES type) {
+  Box *newBox = getBox(size);
+  newBox->type = type;
 
   return newBox;
 }
@@ -469,24 +439,16 @@ void HD44780::qClean() {
   _mQueue->clean();
 }
 
-// todo error handler
-void HD44780::checkQueue() {
+bool HD44780::checkQueue() {
   if (!_mQueue->isEmpty()) {
-    Box *data = _mQueue->dequeue();
+    Box *box = _mQueue->dequeue();
 
-    if (data != nullptr) {
-      uint8_t res = hdWrite(data->data, data->size);
-
-      if (res == 0) {
-        Serial.println("checkQueue: Write data error");
-      }
-
-      /* if (data->size > 1)
-        hdWrite(data->data, data->size);
-      else
-        hdWrite(data->data[0]); */
-
-      freeBox(data);
+    if (box != nullptr) {
+      uint8_t res = hdWrite(box->data, box->size, box->type);
+      freeBox(box);
+      return true;
     }
   }
+
+  return false;
 }

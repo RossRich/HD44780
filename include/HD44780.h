@@ -24,7 +24,7 @@
  **/
 #define HD_WRITE_COMMAND 0x0U
 #define HD_WRITE_DATA 0x1U
-#define HD_READ_STATUS 0x2U // read busy flag and index position
+#define HD_READ_STATUS 0x2U ///< read busy flag and index position
 #define HD_READ_DATA 0x3U
 #define HD_E 0x4U
 #define HD_BACKLIGHT 0x8U
@@ -34,7 +34,7 @@
  **/
 #define HD_CLEAR 0x1U
 #define HD_HOME 0x2U
-#define HD_SHIFT_DSP_RIGHT 0x1CU // Shift dispaly
+#define HD_SHIFT_DSP_RIGHT 0x1CU ///< Shift dispaly
 #define HD_SHIFT_DSP_LEFT 0x18U
 #define HD_MOVE_CURSOR_RIGHT 0x14U
 #define HD_MOVE_CURSOR_LEFT 0x10U
@@ -71,7 +71,13 @@
 #define HD_S_FONT_5X10 0x4U
 #define HD_S_FONT_5X8 0x0U
 
-#define HD_CMNDS_NUM 6U // One char converted in HD_CMNDS_NUM bytes
+#define HD_SMART_MODE true ///< In smart mode one char converts to 2 bytes 
+
+#if HD_SMART_MODE == true
+  #define HD_CMNDS_NUM 2U ///< One char converts in HD_CMNDS_NUM bytes
+#else
+  #define HD_CMNDS_NUM 6U ///< One char converts in HD_CMNDS_NUM bytes
+#endif
 
 #define HD_ERR_PCF 99
 #define HD_Q_ERR 89
@@ -83,8 +89,14 @@
  * Struct for queue
  **/
 struct Box {
-  uint8_t *data;
-  uint16_t size;
+  enum TYPES {
+    COMMAND = HD_WRITE_COMMAND,
+    DATA = HD_WRITE_DATA
+  };
+
+  uint8_t *data; ///< data for write in display
+  uint16_t size; ///< data size
+  uint8_t type = TYPES::DATA; ///< command or data
 };
 
 /**
@@ -95,7 +107,13 @@ struct HDState {
   uint8_t cursorPos;
 };
 
-void freeBox(Box *b); // del box from memory
+
+/**
+ * @brief Dels box from memory
+ * 
+ * @param[in] Box* Pointer on memory to free 
+ */
+void freeBox(Box *b);
 inline uint8_t lowBits(uint8_t byte) { return byte & 0xF; }
 inline uint8_t highBits(uint8_t byte) { return byte & 0xF0; }
 
@@ -162,8 +180,22 @@ private:
    * @param size box size
    *
    * @return pointer on struct 'Box'
-   **/
-  Box *getBox(uint16_t size);
+   */
+  Box *getBox(uint16_t size = 1);
+
+  /**
+   * Prepare box for store converted data
+   * @see struct Box
+   * @note size = num chars * HD_CMNDS_NUM
+   *
+   * @param size box size
+   * @param type data type (display command or data)
+   *
+   * @return pointer on struct 'Box'
+   */
+  Box *getBox(uint16_t size, Box::TYPES type);
+  inline Box *getCommandBox(uint16_t size = 1) { return getBox(size, Box::TYPES::COMMAND); }
+  inline Box *getDataBox(uint16_t size = 1) {  return getBox(size, Box::TYPES::DATA); }
 
   /**
    * @brief Backlight control
@@ -208,24 +240,29 @@ public:
   void waitingHd();
 
   /**
-   * Diract write 1 byte (8 bits)
-   *
+   * @brief Direct write 1 byte (8 bits).
+   *        Before use this function, need use doCommand() function.
+   * @see HD44780::doCommands(uint8_t, uint8_t, uint8_t);
+   * 
    * @param data 1 byte of a data
-   * @param isEnd Free the i2c bus?
+   * @param isEnd Free i2c bus?
    *
    * @return 0 if error, else 1
    **/
   uint8_t hdWrite(uint8_t data, bool isEnd = true);
 
   /**
-   * Write 1 byte (8 bits)
+   * Write array data
    *
-   * @param data[] array of data
-   * @param length data length
+   * @param[in] data array pointer of data
+   * @param[in] length data length
+   * @param[in] type operation type with data
+   * 
+   * @see Box::TYPE
    *
    * @return 0 if error, else number of writed bytes
    **/
-  uint8_t hdWrite(uint8_t data[], uint16_t length);
+  uint8_t hdWrite(uint8_t data[], uint16_t length, uint8_t type);
 
   /**
    * Add Box into queue for write to HD
@@ -270,45 +307,43 @@ public:
 
   /**
    * @brief Clear display and move cursor to home
-   * 
-   * @param[in] isEnd 
    */
-  void clear(bool isEnd = true);
+  void clear();
 
   /**
    * @brief Turn on display and backlight
    */
-  void on(bool isEnd = true);
+  void on();
 
   /**
    * @brief Turn off display and backlight
    */
-  void off(bool isEnd = true);
+  void off();
 
   /**
    * @brief Move display and cursor to home position
    */
-  void home(bool isEnd = true);
+  void home();
 
   /**
    * @brief Move cursor at one position to right
    */
-  void moveCursorRight(bool isEnd = true);
+  void moveCursorRight();
 
   /**
    * @brief Move cursor at one position to left
    */
-  void moveCursorLeft(bool isEnd = true);
+  void moveCursorLeft();
 
   /**
    * @brief Move display at one column to right
    */
-  void moveDisplayRight(bool isEnd = true);
+  void moveDisplayRight();
 
   /**
    * @brief Move display at one column to left
    */
-  void moveDisplayLeft(bool isEnd = true);
+  void moveDisplayLeft();
 
   /**
    * @brief Get display width
@@ -347,9 +382,11 @@ public:
   bool enqueue(Box *);
 
   /**
-   * @brief Writes data from queue to display if not empty
+   * @brief Writes data from queue to a display if queue not empty. Not garantide what data wrote in HD.
+   * 
+   * @return true - if queue not empty and data block was passed to write in HD
    */
-  void checkQueue();
+  bool checkQueue();
 
   /**
    * @brief Get queue size
