@@ -110,6 +110,7 @@ uint8_t HD44780::hdWrite(uint8_t data[], uint16_t length, uint8_t type) {
   uint8_t n = 0;
   uint8_t item[HD_CMNDS_NUM];
   uint8_t section[3];
+
   for (uint16_t i = 0; i < length; i++) {
     if (_pcf->isError())
       break;
@@ -333,6 +334,24 @@ void HD44780::printAt(uint8_t col, uint8_t row, const char cst[]) {
   print(cst);
 }
 
+bool HD44780::goToEnd() {
+
+  while (checkQueue());
+
+  if(isError())
+    return false;
+  
+  return true;
+}
+
+bool HD44780::goToEnd(const char* str) {
+  print(str);
+
+  if(!goToEnd()) return false;
+
+  return true;
+}
+
 void HD44780::setCursor(uint8_t col, uint8_t row) {
   // row_offsets[] = { 0x00, 0x40, 0x14, 0x54 };
 
@@ -444,7 +463,7 @@ bool HD44780::checkQueue() {
     Box *box = _mQueue->dequeue();
 
     if (box != nullptr) {
-      uint8_t res = hdWrite(box->data, box->size, box->type);
+      hdWrite(box->data, box->size, box->type);
       freeBox(box);
       return true;
     }

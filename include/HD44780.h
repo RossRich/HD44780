@@ -306,6 +306,21 @@ public:
   void printAt(uint8_t col, uint8_t row, const char cst[]);
 
   /**
+   * @brief Immediately to write all from queue 
+   * 
+   * @return true - if a write success, false - if HD has error
+   */
+  bool goToEnd();
+
+  /**
+   * @brief To write str to queue and immediately to write all from queue 
+   * @param str data for write in queue
+   * 
+   * @return true - if a write success, false - if HD has error
+   */
+  bool goToEnd(const char* str);
+
+  /**
    * @brief Clear display and move cursor to home
    */
   void clear();
